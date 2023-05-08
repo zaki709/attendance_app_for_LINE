@@ -1,11 +1,11 @@
-var ACCESSTOKEN = "VQTsegVd/vkT+1YxmYhoGhE/1Wc9TsniXX+bXfroPjiNWamgHSFaMcNisy8O4TH46GVUtLD22QiqngNe8m9FyBuJ/n4kGip9lEv6gopSfJP7Xpf8qu2mCHUe+Hu/d6zVg9FYXJGswpNZ0lt53AspcgdB04t89/1O/w1cDnyilFU="
+var ACCESSTOKEN = "your_accecc_token"
 
 //spreadSheetの設定
-var id = '1UFZobzenqoQ3-fZSvtjJVvORkFwQwkaWK9kvIFoAVMc';
+var id = 'sheet_ID';
 var spreadsheet = SpreadsheetApp.openById(id);
 
 var URL = "https://api.line.me/v2/bot/message/reply";//応答メッセージ用のAPI URL
-const masterID = "U6db39d22bc99090b44aeecfaefdfad85";//管理者のlineID
+const masterID = "master_ID";//管理者のlineID
 const days = ["火","木","土"];//練習日
 const pb_data = ["tues_attend","tues_not_attend","tues_noidea","thurs_attend","thurs_not_attend","thurs_noidea","satur_attend","satur_not_attend","satur_noidea"];//postbackのデータ一覧
 const statuses = ["○","✕","△"];//参加予定状況
