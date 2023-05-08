@@ -1,0 +1,239 @@
+var ACCESSTOKEN = "VQTsegVd/vkT+1YxmYhoGhE/1Wc9TsniXX+bXfroPjiNWamgHSFaMcNisy8O4TH46GVUtLD22QiqngNe8m9FyBuJ/n4kGip9lEv6gopSfJP7Xpf8qu2mCHUe+Hu/d6zVg9FYXJGswpNZ0lt53AspcgdB04t89/1O/w1cDnyilFU="
+
+//spreadSheetの設定
+var id = '1UFZobzenqoQ3-fZSvtjJVvORkFwQwkaWK9kvIFoAVMc';
+var spreadsheet = SpreadsheetApp.openById(id);
+
+var URL = "https://api.line.me/v2/bot/message/reply";//応答メッセージ用のAPI URL
+const masterID = "U6db39d22bc99090b44aeecfaefdfad85";//管理者のlineID
+const days = ["火","木","土"];//練習日
+const pb_data = ["tues_attend","tues_not_attend","tues_noidea","thurs_attend","thurs_not_attend","thurs_noidea","satur_attend","satur_not_attend","satur_noidea"];//postbackのデータ一覧
+const statuses = ["○","✕","△"];//参加予定状況
+
+function doPost(e) {
+
+  var json = JSON.parse(e.postData.contents);  
+  var reply_token= json.events[0].replyToken;  
+  var user_id = json.events[0].source.userId;
+  var events = json.events;
+
+  //ユーザー名を取得する場合は、user_idから取得する必要がある。あと、ここはresponseという変数名に格納しないとエラーになる？
+  var response = UrlFetchApp.fetch(
+    'https://api.line.me/v2/bot/profile/' + user_id,
+    {
+      "headers": {
+        "Authorization": "Bearer " + ACCESSTOKEN,
+      }
+    }
+  );
+  profile = JSON.parse(response);
+  var username = profile.displayName
+
+  //ユーザーとやり取りしたときの時間を取得
+  var today = new Date();
+  var month = today.getMonth() + 1;
+  var date = today.getDate();
+  var hour = today.getHours();
+  hour = (hour + 9) % 24;
+  var minute = today.getMinutes();
+  var time = month + '月' + date + '日' +hour + ':' + minute;
+
+  //spreadsheetを取得
+  var sheet;
+  var user_list;
+  sheet = spreadsheet.getSheetByName("sheet1");
+  user_list = spreadsheet.getSheetByName("userlist");
+
+  //ユーザーリストにuser_idとusernameを登録する
+  if(nameFinder(username,"userlist") === false){
+    user_list.appendRow([username, user_id]);
+  }
+
+  events.forEach(function(event){
+    if(event.type == 'message'){
+      var user_message = event.message.text;
+      if(user_message.includes('入力')){
+        if(nameFinder(username,"sheet1") === true){
+          alertMessage = "既に予定は入力してあります。\n予定を変更する場合は”変更”を押してください。";
+          pushMessage(alertMessage,reply_token);
+        }else{
+          textMessage = username + "さん\n今週の参加予定を入力してください。";
+          pushMessage(textMessage,reply_token);
+          survey(days[0],"tues_");
+        }
+      }else if(user_message.includes('変更')){
+        deleteRecord(username);
+        recordMessage = "予定を変更します。\n再度参加予定を入力してください。";
+        pushMessage(recordMessage,reply_token);
+        survey(days[0],"tues_");
+      }else if(user_message.includes('確認')){
+        var dow = sheet.getRange('F3:H5').getValues();
+        var tues_status = "火曜日　参加" + dow[0][0] + "人:不参加" + dow[0][1] + "人:未定" + dow[0][2] + "人";
+        var thurs_status = "木曜日　参加" + dow[1][0] + "人:不参加" + dow[1][1] + "人:未定" + dow[1][2] + "人";
+        var satur_status = "土曜日　参加" + dow[2][0] + "人:不参加" + dow[2][1] + "人:未定" + dow[2][2] + "人";
+        statusMessage = "現在の参加予定状況\n \n" + tues_status + "\n" + thurs_status + "\n" + satur_status;
+        pushMessage(statusMessage,reply_token);
+      }else if(user_message.includes('yet') && user_id == masterID){
+        var allUserList = user_list.getRange('D6:E100').getValues();
+        var endMessage = "未入力者\n";
+        for(var i = 0;i < allUserList.length;i++){
+          if(nameFinder(String(allUserList[i][0]),"sheet1") === false){
+            endMessage += "・" + String(allUserList[i][0]) + "\n";
+            //alert(allUserList[i][1],allUserList[i][0]);
+          }
+        }
+        endMessage += "\n以上です。";
+        pushMessage(endMessage,reply_token);
+      }
+    }else if(event.type == 'postback'){
+      var dataVal = event.postback.data;
+      if(pb_data.includes(dataVal)){
+        var pb_number = pb_data.indexOf(dataVal);//pb_number = 0 ~ 8
+        sheet.appendRow([username, days[Math.floor(pb_number / 3)], statuses[pb_number % 3], time]);
+        switch(Math.floor(pb_number / 3)){//gasは4/3 = 1.3333...のため、小数点以下切り捨て
+          case 0:
+            survey(days[1],"thurs_");
+            break;
+          case 1:
+            survey(days[2],"satur_");
+            break;
+          case 2:
+            endMessage = "ありがとうございました\nLOG:" + time;
+            pushMessage(endMessage, reply_token);
+            break;
+        }
+      }
+    }
+  });
+  function survey(doweek,dwk) {
+    //クイックリプライボタンを設定したメッセージを送る
+    UrlFetchApp.fetch('https://api.line.me/v2/bot/message/push', {
+      'headers': {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + ACCESSTOKEN, //LINEのトークンを指定
+      },
+      'method': 'POST',
+      'payload': JSON.stringify({
+        'to': user_id, //LINEのユーザIDを指定
+        'messages': [
+          {
+            'type': 'text',
+            'text': doweek + '曜日の練習は',
+            'quickReply': {
+              'items': [
+                {
+                  'type': 'action',
+                  'action': {
+                    'type': 'postback',
+                    'label': '参加',
+                    'data':dwk + 'attend',
+                    'displayText': '参加'
+                  }
+                },
+                {
+                  'type': 'action',
+                  'action': {
+                    'type': 'postback',
+                    'label': '不参加',
+                    'data':dwk + 'not_attend',
+                    'displayText': '不参加'
+                  }
+                },
+                {
+                  'type': 'action',
+                  'action': {
+                    'type': 'postback',
+                    'label': '未定',
+                    'data':dwk + 'noidea',
+                    'displayText': '未定'
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        'notificationDisabled': false //trueだとユーザーに通知されない
+      }),
+    });
+  }
+
+}//end function doPost()
+
+//メッセージを送信
+function pushMessage(textMessage, replyToken) {
+  UrlFetchApp.fetch(URL, {
+    "headers": {
+      "Content-Type": "application/json; charset=UTF-8",
+      "Authorization": "Bearer " + ACCESSTOKEN,
+    },
+    "method": "post",
+    "payload": JSON.stringify({
+      "replyToken": replyToken,
+      "messages": [{
+        "type": "text",
+        "text": textMessage,
+      }],
+    }),
+  });
+}
+
+//未入力者に通告
+function alert(yetId,yetName) {
+  UrlFetchApp.fetch('https://api.line.me/v2/bot/message/push', {
+    'headers': {
+      'Content-Type': 'application/json; charset = UTF-8',
+      'Authorization': 'Bearer ' + ACCESSTOKEN, //LINEのトークンを指定
+    },
+    'method': 'POST',
+    'payload': JSON.stringify({
+      'to': yetId, //LINEのユーザIDを指定
+      'messages': [
+      {
+        'type': 'text',
+        'text': yetName + 'さん\n今週の参加予定が未入力です。”入力”から参加予定を入力してください。'
+      }
+      ],
+    'notificationDisabled': false //trueだとユーザーに通知されない
+    }),
+  });
+}
+function regularAlert(){
+  userl = spreadsheet.getSheetByName('userlist');
+  var allUserList = userl.getRange('D6:E100').getValues();
+  for(var i = 0;i < allUserList.length;i++){
+    if(nameFinder(String(allUserList[i][0]),"sheet1") === false){
+      alert(allUserList[i][1],allUserList[i][0]);
+    }
+  }
+}
+
+//spreadsheet操作
+function clearSheetContents(e){
+  var sheet;
+  sheet = spreadsheet.getSheetByName("sheet1");
+  sheet.getRange('A6:D100').clearContent();
+}
+
+function nameFinder(name,sh){
+  var sheet;
+  sheet = spreadsheet.getSheetByName(sh);
+  var data = sheet.getRange('A6:A').getValues();
+  var exename = data.some(function(array, i, data){
+    return (array[0] === name);
+  });
+  return exename;
+}
+
+function deleteRecord(delname) {
+  var sheet;
+  sheet = spreadsheet.getSheetByName("sheet1");
+  var data = sheet.getDataRange().getValues();
+  var length = data.length;
+  
+  for (var i = length - 1; i >= 1 ; i--){
+    var keyword = data[i][0]; 
+    if(keyword === delname){
+      sheet.deleteRow(i + 1);
+    } 
+  }
+}
